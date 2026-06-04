@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Cisco Secure Workload — ServiceNow CMDB Integration Guide</title>
+  <style>
+
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+</style>
+  <style type="text/css">body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:900px;margin:2rem auto;padding:0 1.5rem;color:#1a1a2e;line-height:1.65}h1{font-size:1.8rem;border-bottom:2px solid #005073;padding-bottom:.5rem}h2{font-size:1.3rem;margin-top:2rem;color:#005073}h3{font-size:1.1rem;color:#333}code{background:#f4f4f4;padding:.15em .4em;border-radius:3px;font-size:.9em}pre{background:#f4f4f4;padding:1rem;border-radius:4px;overflow-x:auto}table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.92em}th{background:#005073;color:#fff;padding:.5rem .75rem;text-align:left}td{padding:.45rem .75rem;border-bottom:1px solid #e2e2e2}tr:nth-child(even) td{background:#f9f9f9}blockquote{border-left:4px solid #005073;margin:0;padding:.5rem 1rem;background:#f0f7fb;color:#444}a{color:#0066cc}
+</style>
+</head>
+<body>
+<h1 id="cisco-secure-workload-servicenow-cmdb-integration-guide">Cisco
+Secure Workload — ServiceNow CMDB Integration Guide</h1>
+<blockquote>
+<p><strong>Disclaimer:</strong> Community reference guide by Cisco
+Solutions Engineering. Always consult <a href="https://www.cisco.com/c/en/us/products/security/tetration/index.html">official
+Cisco Secure Workload documentation</a> for authoritative guidance.</p>
+</blockquote>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol type="1">
+<li><a href="#1-overview">Overview</a></li>
+<li><a href="#2-architecture">Architecture</a></li>
+<li><a href="#3-what-csw-gets-from-servicenow">What CSW Gets from
+ServiceNow</a></li>
+<li><a href="#4-use-cases">Use Cases</a></li>
+<li><a href="#5-prerequisites">Prerequisites</a></li>
+<li><a href="#6-step-a--prepare-servicenow">Step A — Prepare
+ServiceNow</a></li>
+<li><a href="#7-step-b--configure-the-servicenow-connector-on-csw">Step
+B — Configure the ServiceNow Connector on CSW</a></li>
+<li><a href="#8-verification">Verification</a></li>
+<li><a href="#9-sync-interval-and-data-refresh">Sync Interval and Data
+Refresh</a></li>
+<li><a href="#10-limits">Limits</a></li>
+<li><a href="#11-troubleshooting">Troubleshooting</a></li>
+<li><a href="#12-related-resources">Related Resources</a></li>
+</ol>
+<hr />
+<h2 id="overview">1. Overview</h2>
+<p>The <strong>ServiceNow connector</strong> in Cisco Secure Workload
+connects to a <strong>ServiceNow instance</strong> to pull <strong>CMDB
+(Configuration Management Database) labels</strong> for endpoints and
+enrich CSW workload inventory.</p>
+<p>This integration bridges the gap between ITSM-managed asset data
+(application owner, environment, business unit, CI class, etc.) and CSW
+workload policy — enabling <strong>CMDB-driven
+microsegmentation</strong> without manual label maintenance in CSW.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<ul>
+<li>CSW scopes stay <strong>accurate automatically</strong> as CMDB
+records are updated — no manual label tagging</li>
+<li>Enables policy based on <strong>business-meaningful
+attributes</strong> (app owner, tier, environment, compliance
+class)</li>
+<li>Connects infrastructure segmentation to <strong>ITSM change
+management workflows</strong></li>
+<li>Critical for financial-services environments where CMDB is the
+authoritative source of asset truth</li>
+</ul>
+<h3 id="supported-servicenow-tables">Supported ServiceNow tables</h3>
+<p>Any ServiceNow table that has an <strong>IP address field</strong>
+can be used. Common examples: - <code>cmdb_ci_server</code> —
+Physical/virtual server CIs - <code>cmdb_ci_linux_server</code> — Linux
+servers - <code>cmdb_ci_win_server</code> — Windows servers -
+<code>cmdb_ci_app_server</code> — Application servers - Custom CMDB
+tables with IP address fields - Scripted REST APIs with IP address
+support</p>
+<hr />
+<h2 id="architecture">2. Architecture</h2>
+<pre><code>┌──────────────────────────────────────────────────────────────────┐
+│                        Enterprise Environment                     │
+│                                                                   │
+│  ┌─────────────────────────┐    HTTPS REST      ┌─────────────┐  │
+│  │    ServiceNow Instance   │◄───────────────────│ CSW Edge    │  │
+│  │                          │   (Table API)      │ Appliance   │  │
+│  │  CMDB Tables:            │                    │             │  │
+│  │  • cmdb_ci_server        │                    │ ServiceNow  │  │
+│  │  • cmdb_ci_linux_server  │                    │ Connector   │  │
+│  │  • cmdb_ci_win_server    │                    └──────┬──────┘  │
+│  │  • Custom CI tables      │                           │         │
+│  └─────────────────────────┘                           │         │
+│                                                         │ Labels  │
+│  ┌──────────────────────────────────────────────────────▼──────┐  │
+│  │              Cisco Secure Workload Cluster                   │  │
+│  │                                                              │  │
+│  │  Inventory enrichment:                                       │  │
+│  │    10.0.0.5 → {app_name: &quot;PaymentAPI&quot;, owner: &quot;FinanceIT&quot;,  │  │
+│  │                environment: &quot;Production&quot;, tier: &quot;App&quot;}       │  │
+│  │                                                              │  │
+│  │  Scopes (CMDB-driven):                                       │  │
+│  │    &quot;Production-Finance-App&quot; = environment=Production AND     │  │
+│  │                               business_unit=Finance          │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘</code></pre>
+<hr />
+<h2 id="what-csw-gets-from-servicenow">3. What CSW Gets from
+ServiceNow</h2>
+<p>Any attribute from a configured ServiceNow table can be used as a CSW
+workload label. Common CMDB attributes:</p>
+<table>
+<colgroup>
+<col style="width: 35%" />
+<col style="width: 37%" />
+<col style="width: 27%" />
+</colgroup>
+<thead>
+<tr>
+<th>ServiceNow Field</th>
+<th>CSW Label Example</th>
+<th>Use in Policy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>cmdb/name = PaymentAPI</code></td>
+<td>Identify workloads by CI name</td>
+</tr>
+<tr>
+<td><code>environment</code></td>
+<td><code>cmdb/environment = Production</code></td>
+<td>Scope by env (Prod/Dev/Test)</td>
+</tr>
+<tr>
+<td><code>u_business_unit</code></td>
+<td><code>cmdb/business_unit = Finance</code></td>
+<td>Business-unit–based scopes</td>
+</tr>
+<tr>
+<td><code>u_application_owner</code></td>
+<td><code>cmdb/owner = FinanceIT-Team</code></td>
+<td>Policy review routing</td>
+</tr>
+<tr>
+<td><code>u_tier</code></td>
+<td><code>cmdb/tier = App</code></td>
+<td>3-tier app segmentation (Web/App/DB)</td>
+</tr>
+<tr>
+<td><code>u_compliance_class</code></td>
+<td><code>cmdb/compliance = PCI</code></td>
+<td>Compliance-based policy tightening</td>
+</tr>
+<tr>
+<td><code>operational_status</code></td>
+<td><code>cmdb/status = 1</code></td>
+<td>Exclude decommissioned CIs</td>
+</tr>
+<tr>
+<td><code>support_group</code></td>
+<td><code>cmdb/support_group = Infra-Ops</code></td>
+<td>Ops-team ownership labels</td>
+</tr>
+</tbody>
+</table>
+<p>Up to <strong>10 attributes per table</strong> can be configured.
+Multiple tables can be added.</p>
+<hr />
+<h2 id="use-cases">4. Use Cases</h2>
+<h3 id="use-case-1-cmdb-driven-scope-automation">Use Case 1 —
+CMDB-Driven Scope Automation</h3>
+<p><strong>Scenario:</strong> Financial services has 2,000 servers.
+Manually labeling each in CSW is impractical.</p>
+<p><strong>With ServiceNow connector:</strong> - CSW scope
+<code>PCI-Servers</code> =
+<code>{ cmdb/compliance_class == &#39;PCI&#39; }</code> — automatically includes
+all CIs tagged as PCI in ServiceNow - As new servers are added to
+ServiceNow and tagged PCI, they automatically join the scope and inherit
+the correct policies</p>
+<h3 id="use-case-2-environment-based-policy">Use Case 2 —
+Environment-Based Policy</h3>
+<p><strong>Scenario:</strong> Ensure Production servers are never
+directly reachable from Development servers.</p>
+<pre><code>Policy:
+  Consumer: Dev-Servers  (scope: cmdb/environment = Development)
+  Provider: Prod-Servers (scope: cmdb/environment = Production)
+  Action:   DENY ALL</code></pre>
+<p>CMDB is the authoritative source — policy enforces itself as the CMDB
+changes.</p>
+<h3 id="use-case-3-3-tier-application-isolation">Use Case 3 — 3-Tier
+Application Isolation</h3>
+<p><strong>Scenario:</strong> Enforce proper tier-to-tier communication
+for multi-tier apps.</p>
+<p>With <code>cmdb/tier</code> labels (Web, App, DB), CSW policies
+enforce: - External → Web tier only - Web tier → App tier only - App
+tier → DB tier only - No cross-tier or tier-skipping allowed</p>
+<h3 id="use-case-4-application-owner-accountability">Use Case 4 —
+Application Owner Accountability</h3>
+<p><strong>Scenario:</strong> Show application owners their
+application’s segmentation posture.</p>
+<p>Filter CSW <strong>Policy Analysis</strong> by
+<code>cmdb/owner</code> to give each team a view of only their
+application’s policies — scoped access and accountability without admin
+privileges.</p>
+<hr />
+<h2 id="prerequisites">5. Prerequisites</h2>
+<h3 id="servicenow-side">ServiceNow side</h3>
+<ul class="task-list">
+<li><label><input type="checkbox"></input>ServiceNow instance accessible via
+HTTPS from CSW Edge appliance</label></li>
+<li><label><input type="checkbox"></input>ServiceNow user account with
+roles:</label>
+<ul>
+<li><code>cmdb_read</code> — for standard CMDB tables</li>
+<li><code>web_service_admin</code> — for Scripted REST APIs (if
+used)</li>
+</ul></li>
+<li><label><input type="checkbox"></input>Tables to integrate have an
+<strong>IP address field</strong> (<code>ip_address</code> or
+equivalent)</label></li>
+<li><label><input type="checkbox"></input>(If using Scripted REST APIs) APIs
+must support <code>sysparm_limit</code>, <code>sysparm_fields</code>,
+<code>sysparm_offset</code> query parameters; no path
+parameters</label></li>
+</ul>
+<h3 id="csw-side">CSW side</h3>
+<ul class="task-list">
+<li><label><input type="checkbox"></input><strong>CSW Edge appliance</strong>
+deployed and registered</label></li>
+<li><label><input type="checkbox"></input>Edge appliance has network access to
+ServiceNow instance HTTPS endpoint</label></li>
+<li><label><input type="checkbox"></input>Labels / annotations enabled on the
+target VRF/tenant</label></li>
+</ul>
+<hr />
+<h2 id="step-a-prepare-servicenow">6. Step A — Prepare ServiceNow</h2>
+<h3 id="a1-create-or-identify-a-service-account">A1 — Create or identify
+a service account</h3>
+<p>Create a dedicated ServiceNow user for the CSW connector: 1. Navigate
+to <strong>User Administration &gt; Users &gt; New</strong> 2. Set
+username (e.g., <code>csw_connector_svc</code>) 3. Assign roles: -
+<code>cmdb_read</code> - <code>web_service_admin</code> (if using
+Scripted REST APIs) 4. Set a strong password</p>
+<h3 id="a2-identify-the-tables-to-integrate">A2 — Identify the tables to
+integrate</h3>
+<p>Common tables for server inventory:</p>
+<table>
+<thead>
+<tr>
+<th>Table Name</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cmdb_ci_server</code></td>
+<td>Base server CI class</td>
+</tr>
+<tr>
+<td><code>cmdb_ci_linux_server</code></td>
+<td>Linux servers</td>
+</tr>
+<tr>
+<td><code>cmdb_ci_win_server</code></td>
+<td>Windows servers</td>
+</tr>
+<tr>
+<td><code>cmdb_ci_app_server</code></td>
+<td>Application servers</td>
+</tr>
+<tr>
+<td><code>cmdb_ci_db_instance</code></td>
+<td>Database instances</td>
+</tr>
+</tbody>
+</table>
+<p>Verify each table has an IP address field:</p>
+<pre><code>GET https://&lt;instance&gt;.service-now.com/api/now/table/cmdb_ci_server?sysparm_fields=ip_address,name&amp;sysparm_limit=1</code></pre>
+<h3 id="a3-optional-create-a-scripted-rest-api">A3 — (Optional) Create a
+Scripted REST API</h3>
+<p>For custom data not in standard tables, create a ServiceNow Scripted
+REST API: 1. Navigate to <strong>System Web Services &gt; Scripted REST
+APIs &gt; New</strong> 2. Create an API with a <code>GET</code> method
+that returns records with <code>ip_address</code>, plus your custom
+fields 3. Ensure it supports <code>sysparm_limit</code>,
+<code>sysparm_fields</code>, <code>sysparm_offset</code> 4. Note the API
+namespace and path for use in CSW connector configuration</p>
+<hr />
+<h2 id="step-b-configure-the-servicenow-connector-on-csw">7. Step B —
+Configure the ServiceNow Connector on CSW</h2>
+<h3 id="b1-navigate-to-connector-configuration">B1 — Navigate to
+connector configuration</h3>
+<ol type="1">
+<li>CSW UI: <strong>Manage &gt; Virtual Appliances</strong></li>
+<li>Select <strong>Edge appliance</strong></li>
+<li><strong>Connectors</strong> tab → <strong>+ Add Connector</strong> →
+<strong>ServiceNow</strong></li>
+</ol>
+<h3 id="b2-servicenow-instance-credentials">B2 — ServiceNow instance
+credentials</h3>
+<table>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 44%" />
+<col style="width: 31%" />
+</colgroup>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ServiceNow Instance URL</strong></td>
+<td>Full URL of the ServiceNow instance</td>
+<td><code>https://mycompany.service-now.com</code></td>
+</tr>
+<tr>
+<td><strong>Username</strong></td>
+<td>Service account username</td>
+<td><code>csw_connector_svc</code></td>
+</tr>
+<tr>
+<td><strong>Password</strong></td>
+<td>Service account password</td>
+<td>(encrypted by CSW)</td>
+</tr>
+<tr>
+<td><strong>Include Scripted APIs</strong></td>
+<td>Enable if using Scripted REST APIs</td>
+<td>Checkbox</td>
+</tr>
+</tbody>
+</table>
+<h3 id="b3-table-discovery-and-selection">B3 — Table discovery and
+selection</h3>
+<p>After entering credentials, click <strong>Discover Tables</strong>.
+CSW will: 1. Query ServiceNow for available tables (and Scripted REST
+APIs if enabled) 2. Present a list of discovered tables</p>
+<p>For each table you want to integrate: 1. Select the table from the
+list 2. Choose the <strong>IP address field</strong> as the primary key
+(typically <code>ip_address</code>) 3. Select <strong>up to 10
+additional attributes</strong> to import as CSW labels</p>
+<h3 id="b4-attribute-mapping-example">B4 — Attribute mapping
+example</h3>
+<p>For <code>cmdb_ci_server</code>:</p>
+<table>
+<thead>
+<tr>
+<th>ServiceNow Attribute</th>
+<th>Map to CSW Label</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip_address</code></td>
+<td>(primary key — not a label)</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td><code>cmdb/name</code></td>
+</tr>
+<tr>
+<td><code>u_environment</code></td>
+<td><code>cmdb/environment</code></td>
+</tr>
+<tr>
+<td><code>u_business_unit</code></td>
+<td><code>cmdb/business_unit</code></td>
+</tr>
+<tr>
+<td><code>u_tier</code></td>
+<td><code>cmdb/tier</code></td>
+</tr>
+<tr>
+<td><code>u_compliance_class</code></td>
+<td><code>cmdb/compliance_class</code></td>
+</tr>
+<tr>
+<td><code>operational_status</code></td>
+<td><code>cmdb/operational_status</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="b5-set-sync-interval">B5 — Set sync interval</h3>
+<p>Default sync interval: <strong>60 minutes</strong>. Adjust based on
+how frequently your CMDB changes: - High-change environments: 30 minutes
+- Stable environments: 120–240 minutes</p>
+<h3 id="b6-apply-configuration">B6 — Apply configuration</h3>
+<p>Click <strong>Test and Apply</strong>. The connector will: 1. Perform
+an initial full sync of the configured tables 2. Annotate matching IP
+addresses in CSW inventory with CMDB labels 3. Schedule periodic syncs
+at the configured interval</p>
+<hr />
+<h2 id="verification">8. Verification</h2>
+<h3 id="check-connector-status">Check connector status</h3>
+<p><strong>Manage &gt; Virtual Appliances &gt; [Edge] &gt;
+Connectors</strong> ServiceNow connector should show <strong>Status:
+Active</strong></p>
+<h3 id="check-label-enrichment-in-inventory">Check label enrichment in
+inventory</h3>
+<ol type="1">
+<li>Navigate to <strong>Inventory &gt; Workloads</strong></li>
+<li>Filter by a server you know is in ServiceNow (search by IP)</li>
+<li>Confirm <code>cmdb/</code> labels are populated</li>
+</ol>
+<h3 id="verify-in-csw-explore">Verify in CSW Explore</h3>
+<p>Run an Explore query to list all IPs enriched with CMDB labels:</p>
+<pre><code>label cmdb/environment exists</code></pre>
+<h3 id="delete-stale-labels-if-needed">Delete stale labels (if
+needed)</h3>
+<p>If you need to remove labels added by the ServiceNow connector (e.g.,
+after a table reconfiguration):</p>
+<pre><code># From Explore command UI in CSW:
+labels delete --connector servicenow --vrf &lt;VRF_ID&gt;</code></pre>
+<hr />
+<h2 id="sync-interval-and-data-refresh">9. Sync Interval and Data
+Refresh</h2>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 36%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr>
+<th>Task</th>
+<th>Frequency</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initial sync</td>
+<td>On connector start</td>
+<td>Full pull of all configured tables</td>
+</tr>
+<tr>
+<td>Periodic sync</td>
+<td>Configurable (default 60 min)</td>
+<td>Incremental update of changed records</td>
+</tr>
+<tr>
+<td>Label cleanup</td>
+<td>On sync</td>
+<td>IPs no longer in ServiceNow lose CMDB labels</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="limits">10. Limits</h2>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Attributes per table</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Tables per ServiceNow instance config</td>
+<td>Multiple (no hard limit)</td>
+</tr>
+<tr>
+<td>Scripted REST API path parameters</td>
+<td>Not supported</td>
+</tr>
+<tr>
+<td>ServiceNow connector per Edge appliance</td>
+<td>1 recommended</td>
+</tr>
+<tr>
+<td>IP field requirement</td>
+<td>Table must have an IP address field</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="troubleshooting">11. Troubleshooting</h2>
+<table>
+<colgroup>
+<col style="width: 56%" />
+<col style="width: 43%" />
+</colgroup>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Connector fails to authenticate</td>
+<td>Verify username/password; confirm account is active in
+ServiceNow</td>
+</tr>
+<tr>
+<td>No tables discovered</td>
+<td>Check <code>cmdb_read</code> role assigned; verify HTTPS
+connectivity from Edge to ServiceNow</td>
+</tr>
+<tr>
+<td>IP labels not appearing</td>
+<td>Confirm the IP address field name in the table is correctly mapped;
+verify IPs in ServiceNow match IPs visible to CSW</td>
+</tr>
+<tr>
+<td>Stale labels after CI deletion</td>
+<td>Labels are removed on next sync cycle; force sync by restarting
+connector</td>
+</tr>
+<tr>
+<td>Scripted REST API not listed</td>
+<td>Confirm <code>web_service_admin</code> role; verify no path
+parameters in the API</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="related-resources">12. Related Resources</h2>
+<table>
+<colgroup>
+<col style="width: 35%" />
+<col style="width: 38%" />
+<col style="width: 26%" />
+</colgroup>
+<thead>
+<tr>
+<th>Repository</th>
+<th>Description</th>
+<th>Best for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/chandrapati/CSW-Agent-Installation-Guide">CSW-Agent-Installation-Guide</a></td>
+<td>Deploy CSW agents on Linux/Windows workloads</td>
+<td>Server-side agent deployment</td>
+</tr>
+<tr>
+<td><a href="https://github.com/chandrapati/CSW-Policy-Lifecycle">CSW-Policy-Lifecycle</a></td>
+<td>Policy discovery → enforcement workflow</td>
+<td>Policy management</td>
+</tr>
+<tr>
+<td><a href="https://github.com/chandrapati/csw-ise-integration">csw-ise-integration</a></td>
+<td>ISE/pxGrid: user-identity–aware policy</td>
+<td>Identity-aware policy</td>
+</tr>
+<tr>
+<td><a href="https://github.com/chandrapati/CSW-Compliance-Mapping">CSW-Compliance-Mapping</a></td>
+<td>Map CSW to NIST, PCI-DSS, HIPAA, CIS</td>
+<td>Compliance reporting</td>
+</tr>
+<tr>
+<td><a href="https://github.com/chandrapati/CSW-Operations-Toolkit">CSW-Operations-Toolkit</a></td>
+<td>Day-2 ops scripts: health, reporting, policy</td>
+<td>Ongoing operations</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Best practice:</strong> Combine ServiceNow CMDB labels
+(environment, tier, compliance class) with ISE SGT labels (user
+identity) for the richest policy context in your tenant.</p>
+</blockquote>
+<hr />
+<p><em>Community reference — Cisco Solutions Engineering. Not an
+official Cisco product document.</em></p>
+</body>
+</html>
