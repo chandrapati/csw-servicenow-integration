@@ -1,5 +1,7 @@
 # Cisco Secure Workload — ServiceNow CMDB Integration Guide
 
+![Visitors](https://visitor-badge.laobi.icu/badge?page_id=chandrapati.csw-servicenow-integration&left_text=visitors)
+
 > **Disclaimer:** Community reference guide by Cisco Solutions Engineering. Always consult [official Cisco Secure Workload documentation](https://www.cisco.com/c/en/us/products/security/tetration/index.html) for authoritative guidance.
 
 ServiceNow CMDB connector: pull CI labels into CSW for CMDB-driven scope automation
