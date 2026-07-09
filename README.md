@@ -18,7 +18,7 @@ ServiceNow CMDB connector: pull CI labels into CSW for CMDB-driven scope automat
 
 ---
 
-## Related Cisco Secure Workload Resources
+## CSW Integration Guides & Resources
 
 | Repository | Description | Best for |
 |------------|-------------|---------|
