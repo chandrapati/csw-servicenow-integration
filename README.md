@@ -4,6 +4,8 @@
 
 A step-by-step integration guide for enriching Cisco Secure Workload (CSW) inventory with **ServiceNow CMDB** attributes via the **ServiceNow connector**. Imported CI attributes (owner, environment, tier, compliance class, …) become CSW **labels** that drive **CMDB-driven microsegmentation** scopes and policies — no manual label maintenance.
 
+Limits, the Edge appliance requirement, and the two places Cisco's own docs disagree are written up in [CSW-ServiceNow-Connector-Guide](https://github.com/chandrapati/CSW-ServiceNow-Connector-Guide). Start there when a number on this page needs a source.
+
 [![Cisco Secure Workload](https://img.shields.io/badge/Cisco-Secure%20Workload-00205B?logo=cisco&logoColor=white)](https://www.cisco.com/go/secureworkload)
 [![ServiceNow](https://img.shields.io/badge/ServiceNow-CMDB%20(Table%20API)-62D84E?logo=servicenow&logoColor=white)](https://www.servicenow.com/products/servicenow-platform/configuration-management-database.html)
 [![Integration](https://img.shields.io/badge/Integration-Inventory%20Enrichment-007BC7)](https://www.cisco.com/c/m/en_us/products/security/secure-workload-compatibility-matrix.html)
